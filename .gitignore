@@ -1,0 +1,12 @@
+# Node
+node/node_modules/
+node/.env
+
+# Python
+python/venv/
+__pycache__/
+*.pyc
+
+# Runtime output
+output/
+node/output/
