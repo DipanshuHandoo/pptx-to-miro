@@ -87,18 +87,25 @@ def parse_slide(slide, index, output_dir, theme):
 
     shapes_out, connectors_out, images_out = [], [], []
 
-    for sh, box in flat:
+    # `z` is the shape's index in document order (back-to-front paint order).
+    # The Node layer creates items in this order so Miro's stacking matches PPTX.
+    for order, (sh, box) in enumerate(flat):
         try:
             if is_connector(sh):
-                connectors_out.append(extract_connector(sh, box, shape_id_to_key, theme))
+                conn = extract_connector(sh, box, shape_id_to_key, theme)
+                conn["z"] = order
+                connectors_out.append(conn)
             elif get_shape_type(sh) == "PICTURE":
                 img = extract_image(sh, box, output_dir)
                 if img:
+                    img["z"] = order
                     images_out.append(img)
                 else:
                     warn("slide %d: skipped unreadable image (shape %s)" % (index + 1, getattr(sh, "shape_id", "?")))
             else:
-                shapes_out.append(build_shape(sh, box, theme))
+                shape = build_shape(sh, box, theme)
+                shape["z"] = order
+                shapes_out.append(shape)
         except Exception as exc:
             warn("slide %d: skipped shape %s: %s" % (index + 1, getattr(sh, "shape_id", "?"), exc))
 

@@ -8,7 +8,9 @@
     "pptx-to-miro": "src/cli.js"
   },
   "scripts": {
-    "start": "node src/cli.js"
+    "start": "node src/cli.js",
+    "preview": "node src/preview.js",
+    "serve": "node scripts/serve.js output 5599"
   },
   "engines": {
     "node": ">=18"

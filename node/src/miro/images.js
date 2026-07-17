@@ -85,4 +85,4 @@ const createAllImages = async (client, boardId, images, slideMetadata, options =
   return { created, skipped, failed };
 };
 
-module.exports = { createAllImages };
+module.exports = { createAllImages, createImage };

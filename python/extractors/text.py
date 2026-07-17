@@ -1,6 +1,13 @@
-"""Text frame -> runs + Miro-safe HTML extraction."""
+"""Text frame -> runs + Miro-safe HTML extraction.
+
+Walks each paragraph's child elements in document order so that line breaks
+(`<a:br/>`, which python-pptx surfaces as a vertical tab and otherwise drops
+between runs) are preserved as `<br>`.
+"""
 
 import html as html_lib
+
+from pptx.oxml.ns import qn
 
 _ALIGN = {
     "LEFT": "left",
@@ -29,16 +36,63 @@ def _vanchor_name(anchor):
     return _VANCHOR.get(_enum_name(anchor), "middle")
 
 
+def _para_default_size(para):
+    """Paragraph-level default run size (pt), or None."""
+    pPr = para._pPr
+    if pPr is not None:
+        defRPr = pPr.find(qn("a:defRPr"))
+        if defRPr is not None and defRPr.get("sz"):
+            try:
+                return int(defRPr.get("sz")) / 100.0
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _run_data(run, theme, fallback_size):
+    font = run.font
+    try:
+        color = theme.color(font.color)
+    except Exception:
+        color = None
+    try:
+        size = float(font.size.pt) if font.size is not None else None
+    except Exception:
+        size = None
+    if size is None:
+        size = fallback_size
+    return {
+        "text": run.text,
+        "font_name": font.name,
+        "font_size_pt": size,
+        "bold": bool(font.bold),
+        "italic": bool(font.italic),
+        "underline": bool(font.underline),
+        "color": color,
+    }
+
+
+def _run_html(rd):
+    esc = html_lib.escape(rd["text"])
+    if rd["bold"]:
+        esc = "<strong>%s</strong>" % esc
+    if rd["italic"]:
+        esc = "<em>%s</em>" % esc
+    if rd["underline"]:
+        esc = "<u>%s</u>" % esc
+    return esc
+
+
 def extract_text(text_frame, theme):
-    """Return a dict with content/html/alignment/runs, or None when empty."""
+    """Return a dict with content/html/alignment/wrap/runs, or None when empty."""
     if text_frame is None:
         return None
 
-    full_text = text_frame.text.strip()
-    if not full_text:
+    raw = text_frame.text
+    if not raw.strip():
         return None
 
-    runs = []
+    runs_out = []
     html_parts = []
     first_align = "left"
 
@@ -47,47 +101,35 @@ def extract_text(text_frame, theme):
         if i == 0:
             first_align = align
 
-        para_parts = []
-        for run in para.runs:
-            font = run.font
-            try:
-                color = theme.color(font.color)
-            except Exception:
-                color = None
-            try:
-                size = float(font.size.pt) if font.size is not None else None
-            except Exception:
-                size = None
+        para_default = _para_default_size(para)
+        para_html = []
+        run_iter = iter(para.runs)
 
-            run_data = {
-                "text": run.text,
-                "font_name": font.name,
-                "font_size_pt": size,
-                "bold": bool(font.bold),
-                "italic": bool(font.italic),
-                "underline": bool(font.underline),
-                "color": color,
-            }
-            runs.append(run_data)
+        for child in para._p:
+            tag = child.tag.split("}")[-1]
+            if tag == "r":
+                run = next(run_iter, None)
+                if run is None:
+                    continue
+                rd = _run_data(run, theme, para_default)
+                runs_out.append(rd)
+                para_html.append(_run_html(rd))
+            elif tag == "br":
+                para_html.append("<br>")
+            elif tag == "fld":
+                # Field (e.g. slide number): keep its rendered text, no formatting.
+                t = child.find(qn("a:t"))
+                if t is not None and t.text:
+                    para_html.append(html_lib.escape(t.text))
 
-            # Miro rich-text accepts a small tag whitelist; escape everything else.
-            esc = html_lib.escape(run.text)
-            if run_data["bold"]:
-                esc = "<strong>%s</strong>" % esc
-            if run_data["italic"]:
-                esc = "<em>%s</em>" % esc
-            if run_data["underline"]:
-                esc = "<u>%s</u>" % esc
-            para_parts.append(esc)
-
-        # A paragraph can carry text with no explicit runs (paragraph-level props).
-        inner = "".join(para_parts) if para_parts else html_lib.escape(para.text)
-        html_parts.append("<p>%s</p>" % inner)
+        html_parts.append("<p>%s</p>" % "".join(para_html))
 
     return {
-        "content": full_text,
+        "content": raw.replace("\x0b", "\n").strip(),
         "html": "".join(html_parts),
         "alignment": first_align,
         "vertical_alignment": _vanchor_name(getattr(text_frame, "vertical_anchor", None)),
-        "runs": runs,
+        # True = wrap (square), False = no-wrap (text overflows box), None = inherit.
+        "wrap": text_frame.word_wrap,
+        "runs": runs_out,
     }

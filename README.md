@@ -107,6 +107,25 @@ All shapes/text/images become children of their slide's frame.
 > REST API — it's an "unsupported" item type. Frames are the supported equivalent:
 > a titled, movable, collapsible boundary.
 
+### Local preview (no Miro needed)
+
+Render the parsed deck to a local HTML preview that reuses the real mapper, so it
+shows what will be pushed (positions, sizes, text anchoring, z-order) without
+touching Miro:
+
+```bash
+./run.sh --file ./decks/deck.pptx --preview   # writes output/preview.html
+```
+
+To view it in a browser, serve the output dir:
+
+```bash
+cd node && npm run serve        # http://localhost:5599
+```
+
+> The preview uses the browser's Arial metrics, which are close to but not
+> identical to Miro's text rendering — use it for layout/sizing/stacking checks.
+
 ### Manual
 
 Or run from the `node/` directory directly.

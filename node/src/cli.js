@@ -9,11 +9,11 @@ const { program } = require('commander');
 
 const { runPythonParser } = require('./runner');
 const { createMiroClient } = require('./miro/client');
-const { createAllShapes } = require('./miro/shapes');
+const { createOrderedItems } = require('./miro/items');
 const { createAllConnectors } = require('./miro/connectors');
-const { createAllImages } = require('./miro/images');
 const { createFrame } = require('./miro/frames');
 const { clearBoard } = require('./miro/clear');
+const { buildPreview } = require('./preview');
 const { log } = require('./utils/logger');
 
 program
@@ -22,6 +22,7 @@ program
   .requiredOption('-f, --file <path>', 'Path to the .pptx file')
   .option('-o, --output <dir>', 'Output directory for extraction JSON + images', './output')
   .option('--dry-run', 'Parse and map only; do not push to Miro')
+  .option('--preview', 'Parse and render a local HTML preview (output/preview.html); no push')
   .option('--clear', 'Delete ALL existing items on the board before pushing')
   .option('--no-frames', 'Do not wrap each slide in a frame (slides are still offset)')
   .option('--gap <pt>', 'Gap (pt) between slides when laid out in a row', (v) => parseFloat(v), 200)
@@ -50,6 +51,13 @@ const run = async () => {
     if (slides.length === 0) {
       throw new Error(`Slide ${opts.slide} not found (deck has ${extraction.slides.length} slides).`);
     }
+  }
+
+  if (opts.preview) {
+    const previewPath = buildPreview({ metadata: extraction.metadata, slides }, outputDir);
+    log.step(`Preview written: ${previewPath}`);
+    log.info('Open it, or run the "preview" dev server to view in the browser.');
+    return;
   }
 
   if (opts.dryRun) {
@@ -106,10 +114,15 @@ const run = async () => {
 
     const itemOptions = { parentId, offsetX };
 
-    // 1. Shapes + text first (connectors need their Miro ids).
-    const { shapeIdMap, created: sCreated, failed: sFailed } =
-      await createAllShapes(client, boardId, slide.shapes, extraction.metadata, itemOptions);
-    log.info(`Shapes: ${sCreated} created${sFailed ? `, ${sFailed} failed` : ''}`);
+    // 1. Shapes, text, and images in ONE ordered pass (document order) so Miro's
+    //    stacking matches the PPTX back-to-front paint order.
+    const drawables = [...slide.shapes, ...slide.images].sort((a, b) => (a.z || 0) - (b.z || 0));
+    const { shapeIdMap, shapes, texts, images, failed, skipped } =
+      await createOrderedItems(client, boardId, drawables, extraction.metadata, itemOptions);
+    log.info(
+      `Items: ${shapes} shapes, ${texts} text, ${images} images` +
+      `${skipped ? `, ${skipped} skipped` : ''}${failed ? `, ${failed} failed` : ''}`
+    );
 
     // 2. Connectors, resolved to shape ids (attachment handles positioning).
     const conn = await createAllConnectors(
@@ -119,14 +132,6 @@ const run = async () => {
       `Connectors: ${conn.created} created` +
       `${conn.skipped ? `, ${conn.skipped} skipped` : ''}` +
       `${conn.failed ? `, ${conn.failed} failed` : ''}`
-    );
-
-    // 3. Images.
-    const img = await createAllImages(client, boardId, slide.images, extraction.metadata, itemOptions);
-    log.info(
-      `Images: ${img.created} uploaded` +
-      `${img.skipped ? `, ${img.skipped} skipped` : ''}` +
-      `${img.failed ? `, ${img.failed} failed` : ''}`
     );
   }
 
