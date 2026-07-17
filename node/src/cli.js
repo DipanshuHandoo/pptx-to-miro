@@ -12,6 +12,7 @@ const { createMiroClient } = require('./miro/client');
 const { createAllShapes } = require('./miro/shapes');
 const { createAllConnectors } = require('./miro/connectors');
 const { createAllImages } = require('./miro/images');
+const { createFrame } = require('./miro/frames');
 const { clearBoard } = require('./miro/clear');
 const { log } = require('./utils/logger');
 
@@ -22,6 +23,8 @@ program
   .option('-o, --output <dir>', 'Output directory for extraction JSON + images', './output')
   .option('--dry-run', 'Parse and map only; do not push to Miro')
   .option('--clear', 'Delete ALL existing items on the board before pushing')
+  .option('--no-frames', 'Do not wrap each slide in a frame (slides are still offset)')
+  .option('--gap <pt>', 'Gap (pt) between slides when laid out in a row', (v) => parseFloat(v), 200)
   .option('--slide <number>', 'Process only this slide number (1-indexed)', (v) => parseInt(v, 10))
   .parse(process.argv);
 
@@ -77,15 +80,38 @@ const run = async () => {
     log.info(`Cleared: ${cleared.items} items, ${cleared.connectors} connectors`);
   }
 
-  for (const slide of slides) {
+  const { slide_width_pt: slideW, slide_height_pt: slideH } = extraction.metadata;
+  const pitchX = slideW + opts.gap; // slide-to-slide spacing, laid out in a row
+
+  for (let i = 0; i < slides.length; i += 1) {
+    const slide = slides[i];
     log.step(`Slide ${slide.slide_number}`);
+
+    // Lay slides out left-to-right so they never overlap.
+    const offsetX = i * pitchX;
+
+    // Optionally wrap the slide in a frame (a slide container). Items are then
+    // nested in it via parentId and positioned relative to the frame top-left.
+    let parentId;
+    if (opts.frames) {
+      parentId = await createFrame(client, boardId, {
+        title: `Slide ${slide.slide_number}`,
+        x: offsetX,
+        y: 0,
+        width: slideW,
+        height: slideH,
+      });
+      log.info(`Frame created: "Slide ${slide.slide_number}"`);
+    }
+
+    const itemOptions = { parentId, offsetX };
 
     // 1. Shapes + text first (connectors need their Miro ids).
     const { shapeIdMap, created: sCreated, failed: sFailed } =
-      await createAllShapes(client, boardId, slide.shapes, extraction.metadata);
+      await createAllShapes(client, boardId, slide.shapes, extraction.metadata, itemOptions);
     log.info(`Shapes: ${sCreated} created${sFailed ? `, ${sFailed} failed` : ''}`);
 
-    // 2. Connectors, resolved to shape ids.
+    // 2. Connectors, resolved to shape ids (attachment handles positioning).
     const conn = await createAllConnectors(
       client, boardId, slide.connectors, shapeIdMap, slide.shapes
     );
@@ -96,7 +122,7 @@ const run = async () => {
     );
 
     // 3. Images.
-    const img = await createAllImages(client, boardId, slide.images, extraction.metadata);
+    const img = await createAllImages(client, boardId, slide.images, extraction.metadata, itemOptions);
     log.info(
       `Images: ${img.created} uploaded` +
       `${img.skipped ? `, ${img.skipped} skipped` : ''}` +

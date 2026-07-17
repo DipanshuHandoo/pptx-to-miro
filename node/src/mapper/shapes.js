@@ -1,6 +1,6 @@
 'use strict';
 
-const { toMiroPosition } = require('./coordinates');
+const { toMiroPosition, toFramePosition } = require('./coordinates');
 
 // Normalized PPTX type -> Miro shape name. null => handled as a different element.
 const SHAPE_TYPE_MAP = {
@@ -42,31 +42,44 @@ const fontSizeOf = (shape, fallback, min = 1) => {
 /**
  * Map a parsed shape to a Miro element descriptor.
  * Returns { elementType: 'shape' | 'text', payload }.
+ *
+ * options:
+ *   parentId  when set, the item is nested in that frame and positioned
+ *             relative to the frame's top-left (PPTX-native coords).
+ *   offsetX   board-space X offset applied in non-framed mode so multiple
+ *             slides don't overlap.
  */
-const mapShapeToMiro = (shape, slideMetadata) => {
+const mapShapeToMiro = (shape, slideMetadata, options = {}) => {
+  const { parentId, offsetX = 0 } = options;
   const run = firstRun(shape);
+
+  const positionOf = (item) => {
+    if (parentId) return toFramePosition(item);
+    const p = toMiroPosition(item, slideMetadata);
+    p.x += offsetX;
+    return p;
+  };
 
   // Text boxes become native Miro text items (no border/fill container).
   if (shape.type === 'TEXT_BOX') {
-    return {
-      elementType: 'text',
-      payload: {
-        data: {
-          content: (shape.text && (shape.text.html || shape.text.content)) || '',
-        },
-        style: {
-          fontFamily: 'arial',
-          fontSize: fontSizeOf(shape, 14),
-          textAlign: (shape.text && shape.text.alignment) || 'left',
-          color: run.color || DEFAULT_FONT_COLOR,
-        },
-        position: toMiroPosition(shape, slideMetadata),
-        geometry: {
-          width: shape.width_pt,
-          rotation: shape.rotation || 0,
-        },
+    const payload = {
+      data: {
+        content: (shape.text && (shape.text.html || shape.text.content)) || '',
+      },
+      style: {
+        fontFamily: 'arial',
+        fontSize: fontSizeOf(shape, 14),
+        textAlign: (shape.text && shape.text.alignment) || 'left',
+        color: run.color || DEFAULT_FONT_COLOR,
+      },
+      position: positionOf(shape),
+      geometry: {
+        width: shape.width_pt,
+        rotation: shape.rotation || 0,
       },
     };
+    if (parentId) payload.parent = { id: parentId };
+    return { elementType: 'text', payload };
   }
 
   const miroType = SHAPE_TYPE_MAP[shape.type] || 'rectangle';
@@ -96,23 +109,22 @@ const mapShapeToMiro = (shape, slideMetadata) => {
     style.borderOpacity = '0.0';
   }
 
-  return {
-    elementType: 'shape',
-    payload: {
-      data: {
-        shape: miroType,
-        content: (shape.text && shape.text.html) || '',
-      },
-      style,
-      position: toMiroPosition(shape, slideMetadata),
-      geometry: {
-        // Miro requires shape width/height >= 8.
-        width: Math.max(MIN_DIMENSION, shape.width_pt),
-        height: Math.max(MIN_DIMENSION, shape.height_pt),
-        rotation: shape.rotation || 0,
-      },
+  const payload = {
+    data: {
+      shape: miroType,
+      content: (shape.text && shape.text.html) || '',
+    },
+    style,
+    position: positionOf(shape),
+    geometry: {
+      // Miro requires shape width/height >= 8.
+      width: Math.max(MIN_DIMENSION, shape.width_pt),
+      height: Math.max(MIN_DIMENSION, shape.height_pt),
+      rotation: shape.rotation || 0,
     },
   };
+  if (parentId) payload.parent = { id: parentId };
+  return { elementType: 'shape', payload };
 };
 
 module.exports = { mapShapeToMiro, SHAPE_TYPE_MAP };

@@ -86,6 +86,27 @@ step (no `PYTHON_BIN` juggling). All arguments are forwarded to the CLI:
 > individually (parallelized). Without `--clear`, runs are **additive** — pushing
 > the same deck twice creates duplicates.
 
+### Slides & frames
+
+By default each slide is wrapped in its own **frame** (a slide container) and the
+frames are laid out left-to-right in a row, so multi-slide decks never overlap.
+All shapes/text/images become children of their slide's frame.
+
+```bash
+# Default: one frame per slide, in a row:
+./run.sh --file ./decks/deck.pptx --clear
+
+# Wider spacing between slides (pt):
+./run.sh --file ./decks/deck.pptx --clear --gap 400
+
+# No frames — items are still offset per slide so they don't overlap:
+./run.sh --file ./decks/deck.pptx --clear --no-frames
+```
+
+> Miro's own `slide_container` (from the Slides feature) cannot be created via the
+> REST API — it's an "unsupported" item type. Frames are the supported equivalent:
+> a titled, movable, collapsible boundary.
+
 ### Manual
 
 Or run from the `node/` directory directly.
@@ -124,12 +145,17 @@ python parser.py ../decks/workflow.pptx ../node/output
 | Pictures (png/jpg/gif/svg/…) | `image` items (multipart upload) |
 | Theme colors (accent1, tx1, …) | resolved to hex via the deck theme + color map |
 | Grouped shapes | flattened, with group transform applied |
+| Each slide | a `frame` (slide container), laid out in a row (unless `--no-frames`) |
 
 ### Coordinates
 
-PPTX is top-left origin (points); Miro is center origin. Each element's
-top-left box is converted to a center point and offset by half the slide so the
-slide re-centers on Miro's `(0, 0)`.
+PPTX is top-left origin (points); Miro is center origin.
+
+- **Framed (default):** items are children of their slide's frame, positioned
+  relative to the frame's top-left — i.e. the PPTX coordinates directly.
+- **`--no-frames`:** each element's top-left box is converted to a center point
+  and offset by half the slide, then shifted by a per-slide X offset so slides
+  sit side by side.
 
 ---
 
@@ -143,6 +169,7 @@ slide re-centers on Miro's `(0, 0)`.
 | **Per-run text styling** | Miro shape text is single-style; the first run's font/color/size is used. Bold/italic/underline are preserved inline via HTML. |
 | **Fonts** | Mapped to Miro's `arial` (Miro supports only a fixed font set). |
 | **Curved connectors** | Rendered as straight. |
+| **Miro `slide_container`** | Cannot be created via REST API; frames are used instead. |
 
 ---
 
@@ -165,8 +192,9 @@ PPTX-to-MIRO/
 │   └── src/
 │       ├── cli.js                # commander entry point + orchestration
 │       ├── runner.js             # spawns the Python parser
-│       ├── mapper/               # pptx json -> miro payloads
-│       └── miro/                 # api client + create calls
+│       ├── mapper/               # pptx json -> miro payloads (shapes, connectors, coordinates)
+│       └── miro/                 # api client + create calls (shapes, connectors, images, frames, clear)
+├── run.sh                        # venv + CLI in one step
 └── docs/
     └── pptx-to-miro-plan.md
 ```

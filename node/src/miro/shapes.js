@@ -18,14 +18,14 @@ const describeError = (err) => {
  * Returns { shapeIdMap, created, failed } where shapeIdMap maps the parsed
  * shape id ("shape_<pptxId>") to the created Miro item id.
  */
-const createAllShapes = async (client, boardId, shapes, slideMetadata) => {
+const createAllShapes = async (client, boardId, shapes, slideMetadata, options = {}) => {
   const shapeIdMap = {};
   let created = 0;
   let failed = 0;
 
   const tasks = shapes.map((shape) =>
     limit(async () => {
-      const mapped = mapShapeToMiro(shape, slideMetadata);
+      const mapped = mapShapeToMiro(shape, slideMetadata, options);
       const endpoint = mapped.elementType === 'text'
         ? `/boards/${boardId}/texts`
         : `/boards/${boardId}/shapes`;

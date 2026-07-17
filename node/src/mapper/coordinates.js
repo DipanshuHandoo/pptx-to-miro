@@ -16,4 +16,16 @@ const toMiroPosition = (item, slideMetadata) => {
   };
 };
 
-module.exports = { toMiroPosition };
+/**
+ * Position for an item nested inside a frame. Miro interprets a child's
+ * coordinates as its center relative to the parent frame's top-left. Since PPTX
+ * is already a top-left system, the item's frame-relative center is simply its
+ * top-left plus half its size — no slide-centering needed.
+ */
+const toFramePosition = (item) => ({
+  x: item.x_pt + item.width_pt / 2,
+  y: item.y_pt + item.height_pt / 2,
+  origin: 'center',
+});
+
+module.exports = { toMiroPosition, toFramePosition };

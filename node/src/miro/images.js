@@ -3,7 +3,7 @@
 const fs = require('fs');
 const FormData = require('form-data');
 const pLimit = require('p-limit');
-const { toMiroPosition } = require('../mapper/coordinates');
+const { toMiroPosition, toFramePosition } = require('../mapper/coordinates');
 const { log } = require('../utils/logger');
 
 const limit = pLimit(3); // uploads are heavier than JSON item creation
@@ -21,7 +21,8 @@ const describeError = (err) => {
  *   - data:     a JSON string with position/geometry/title
  * (Position/geometry are NOT query params.)
  */
-const createImage = async (client, boardId, image, slideMetadata) => {
+const createImage = async (client, boardId, image, slideMetadata, options = {}) => {
+  const { parentId, offsetX = 0 } = options;
   if (image.supported === false) {
     log.warn(`image ${image.id} (${image.format}) not supported by Miro — skipped`);
     return { skipped: true };
@@ -31,13 +32,24 @@ const createImage = async (client, boardId, image, slideMetadata) => {
     return { skipped: true };
   }
 
+  let position;
+  if (parentId) {
+    position = toFramePosition(image);
+  } else {
+    position = toMiroPosition(image, slideMetadata);
+    position.x += offsetX;
+  }
+
+  const data = {
+    title: image.name || image.id,
+    position,
+    geometry: { width: image.width_pt, rotation: image.rotation || 0 },
+  };
+  if (parentId) data.parent = { id: parentId };
+
   const form = new FormData();
   form.append('resource', fs.createReadStream(image.file_path));
-  form.append('data', JSON.stringify({
-    title: image.name || image.id,
-    position: toMiroPosition(image, slideMetadata),
-    geometry: { width: image.width_pt, rotation: image.rotation || 0 },
-  }));
+  form.append('data', JSON.stringify(data));
 
   await client.post(`/boards/${boardId}/images`, form, {
     headers: {
@@ -51,7 +63,7 @@ const createImage = async (client, boardId, image, slideMetadata) => {
   return { created: true };
 };
 
-const createAllImages = async (client, boardId, images, slideMetadata) => {
+const createAllImages = async (client, boardId, images, slideMetadata, options = {}) => {
   let created = 0;
   let skipped = 0;
   let failed = 0;
@@ -59,7 +71,7 @@ const createAllImages = async (client, boardId, images, slideMetadata) => {
   const tasks = images.map((image) =>
     limit(async () => {
       try {
-        const result = await createImage(client, boardId, image, slideMetadata);
+        const result = await createImage(client, boardId, image, slideMetadata, options);
         if (result.created) created += 1;
         else skipped += 1;
       } catch (err) {
