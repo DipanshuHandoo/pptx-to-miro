@@ -12,6 +12,7 @@ const { createMiroClient } = require('./miro/client');
 const { createAllShapes } = require('./miro/shapes');
 const { createAllConnectors } = require('./miro/connectors');
 const { createAllImages } = require('./miro/images');
+const { clearBoard } = require('./miro/clear');
 const { log } = require('./utils/logger');
 
 program
@@ -20,6 +21,7 @@ program
   .requiredOption('-f, --file <path>', 'Path to the .pptx file')
   .option('-o, --output <dir>', 'Output directory for extraction JSON + images', './output')
   .option('--dry-run', 'Parse and map only; do not push to Miro')
+  .option('--clear', 'Delete ALL existing items on the board before pushing')
   .option('--slide <number>', 'Process only this slide number (1-indexed)', (v) => parseInt(v, 10))
   .parse(process.argv);
 
@@ -68,6 +70,12 @@ const run = async () => {
   const boardId = decodeURIComponent(rawBoardId.trim().replace(/\/+$/, ''));
 
   const client = createMiroClient();
+
+  if (opts.clear) {
+    log.step('Clearing board (deleting all existing items)...');
+    const cleared = await clearBoard(client, boardId);
+    log.info(`Cleared: ${cleared.items} items, ${cleared.connectors} connectors`);
+  }
 
   for (const slide of slides) {
     log.step(`Slide ${slide.slide_number}`);

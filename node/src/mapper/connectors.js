@@ -81,7 +81,8 @@ const mapConnectorToMiro = (connector, shapeIdMap, shapes) => {
       shape: connector.type === 'ELBOW' ? 'elbowed' : 'straight',
       style: {
         strokeColor: line.color || '#000000',
-        strokeWidth: String(line.width_pt || 1),
+        // Miro requires connector strokeWidth >= 1.0.
+        strokeWidth: String(Math.max(1, line.width_pt || 1)),
         strokeStyle: line.style === 'DASHED' ? 'dashed' : line.style === 'DOTTED' ? 'dotted' : 'normal',
         startStrokeCap: ARROW_CAP_MAP[line.arrow_start] || 'none',
         endStrokeCap: ARROW_CAP_MAP[line.arrow_end] || 'none',

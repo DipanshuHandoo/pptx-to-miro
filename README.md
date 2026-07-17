@@ -76,7 +76,15 @@ step (no `PYTHON_BIN` juggling). All arguments are forwarded to the CLI:
 ./run.sh --file ./decks/workflow.pptx --dry-run
 ./run.sh --file ./decks/workflow.pptx
 ./run.sh --file ./decks/workflow.pptx --slide 2
+
+# Wipe the board first, then push (avoids duplicates on re-runs):
+./run.sh --file ./decks/workflow.pptx --clear
 ```
+
+> **`--clear` deletes ALL items on the target board**, not just ones this tool
+> created. Miro has no bulk "clear board" endpoint, so it deletes each item
+> individually (parallelized). Without `--clear`, runs are **additive** — pushing
+> the same deck twice creates duplicates.
 
 ### Manual
 

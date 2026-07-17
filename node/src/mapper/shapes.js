@@ -28,9 +28,15 @@ const DEFAULT_FONT_COLOR = '#1a1a1a';
 
 const firstRun = (shape) => (shape.text && shape.text.runs && shape.text.runs[0]) || {};
 
-const fontSizeOf = (shape, fallback) => {
+// Miro enforces a minimum fontSize of 10 for shapes (text items allow smaller).
+const SHAPE_MIN_FONT = 10;
+// Miro enforces a minimum shape width/height of 8 pt.
+const MIN_DIMENSION = 8;
+
+const fontSizeOf = (shape, fallback, min = 1) => {
   const size = firstRun(shape).font_size_pt;
-  return String(size != null ? Math.round(size) : fallback);
+  const rounded = size != null ? Math.round(size) : fallback;
+  return String(Math.max(min, rounded));
 };
 
 /**
@@ -69,7 +75,7 @@ const mapShapeToMiro = (shape, slideMetadata) => {
 
   const style = {
     color: run.color || DEFAULT_FONT_COLOR,
-    fontSize: fontSizeOf(shape, 14),
+    fontSize: fontSizeOf(shape, 14, SHAPE_MIN_FONT),
     fontFamily: 'arial',
     textAlign: (shape.text && shape.text.alignment) || 'center',
     textAlignVertical: (shape.text && shape.text.vertical_alignment) || 'middle',
@@ -100,8 +106,9 @@ const mapShapeToMiro = (shape, slideMetadata) => {
       style,
       position: toMiroPosition(shape, slideMetadata),
       geometry: {
-        width: shape.width_pt,
-        height: shape.height_pt,
+        // Miro requires shape width/height >= 8.
+        width: Math.max(MIN_DIMENSION, shape.width_pt),
+        height: Math.max(MIN_DIMENSION, shape.height_pt),
         rotation: shape.rotation || 0,
       },
     },
